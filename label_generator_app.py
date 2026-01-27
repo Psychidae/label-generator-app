@@ -11,6 +11,21 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import io
 import re
+import json
+
+# --- Constants ---
+# Region Color Mapping
+REGION_COLORS = {
+    "Palearctic (White)": "#FFFFFF",
+    "Oriental (Yellow)": "#FFFF00",
+    "Wallacea/Melanesia (Orange)": "#FFA500",
+    "Australian (Red)": "#FF0000",
+    "NZ/Pacific (Brown)": "#964B00",
+    "Nearctic (Green)": "#008000",
+    "Neotropical (Yellow-Green)": "#9ACD32",
+    "Ethiopian (Blue)": "#0000FF",
+    "Madagascar (Purple)": "#800080"
+}
 
 def generate_html_sheet(queue, num_columns, font_name, font_size, label_color):
     """Generates an HTML representation of the full A4 sheet."""
@@ -44,7 +59,7 @@ def generate_html_sheet(queue, num_columns, font_name, font_size, label_color):
             line-height: 1.1;
         }}
         .header {{ font-weight: bold; }}
-        .bar {{ height: 2px; background-color: {label_color}; margin: 1px 0; }}
+        .bar {{ height: 2px; margin: 1px 0; }}
         .body {{ white-space: pre-wrap; }}
     </style>
     """
@@ -63,9 +78,11 @@ def generate_html_sheet(queue, num_columns, font_name, font_size, label_color):
         content_html = ""
         
         if ctype == 'data_v2':
+            # Use item color or default
+            i_color = item.get('color', '#000000')
             content_html = f"""
                 <div class="header">{item['header']}</div>
-                <div class="bar"></div>
+                <div class="bar" style="background-color: {i_color};"></div>
                 <div class="body">{item['body']}</div>
             """
         elif ctype == 'rich':
@@ -416,15 +433,66 @@ with st.sidebar:
     num_columns = st.number_input("Columns per Row", min_value=1, max_value=20, value=13, help="Adjust for width (13 cols approx 14mm width)")
     
     st.divider()
-    st.subheader("🎨 Style")
-    label_color = st.color_picker("Bar Color", value="#6A0DAD") # Default Purple
+    st.subheader("🎨 Style (Region/Color)")
+    
+    # Region Selection
+    region_options = list(REGION_COLORS.keys()) + ["Custom"]
+    selected_region = st.selectbox("Select Biogeographic Region", region_options)
+    
+    if selected_region == "Custom":
+        label_color = st.color_picker("Custom Bar Color", value="#6A0DAD")
+    else:
+        label_color = REGION_COLORS[selected_region]
+        st.color_picker("Color Preview", value=label_color, disabled=True)
+    
+    # Batch Update Button (To fix the 'Printscreen setting not applied' issue for colors)
+    if st.button("Apply Color to All Queued Items"):
+        count = 0
+        for item in st.session_state.label_queue:
+            if item.get('type') == 'data_v2':
+                item['color'] = label_color
+                count += 1
+        st.success(f"Updated color for {count} items.")
+        st.rerun()
+
     
     st.divider()
     st.info("Paste Coordinates Example:\n35.689, 139.691")
 
     
     st.divider()
+    st.divider()
     st.subheader("📦 Label Queue")
+    
+    # Save/Load System
+    col_sl1, col_sl2 = st.columns(2)
+    with col_sl1:
+        # Save
+        if st.session_state.label_queue:
+            queue_json = json.dumps(st.session_state.label_queue, indent=2)
+            st.download_button(
+                label="💾 Save Queue Data (JSON)",
+                data=queue_json,
+                file_name=f"label_data_backup_{datetime.date.today()}.json",
+                mime="application/json",
+            )
+            
+    with col_sl2:
+        # Load
+        uploaded_file = st.file_uploader("📂 Load Queue Data", type=["json"])
+        if uploaded_file is not None:
+             try:
+                 loaded_data = json.load(uploaded_file)
+                 if isinstance(loaded_data, list):
+                     if st.button("Confirm Load", type="primary"):
+                         st.session_state.label_queue = loaded_data
+                         st.success("Data Loaded!")
+                         st.rerun()
+                 else:
+                     st.error("Invalid JSON format (must be a list).")
+             except Exception as e:
+                 st.error(f"Error loading JSON: {e}")
+
     if st.session_state.label_queue:
         st.write(f"Items in queue: {len(st.session_state.label_queue)}")
         if st.button("Clear Queue", type="secondary"):
