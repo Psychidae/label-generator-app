@@ -12,6 +12,32 @@ from docx.oxml import OxmlElement
 import io
 import re
 import json
+import os
+
+# --- Auto-Save / Auto-Load ---
+AUTOSAVE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+AUTOSAVE_PATH = os.path.join(AUTOSAVE_DIR, "queue_autosave.json")
+
+def auto_save_queue():
+    """Saves the current label_queue to a local JSON file."""
+    try:
+        os.makedirs(AUTOSAVE_DIR, exist_ok=True)
+        with open(AUTOSAVE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(st.session_state.label_queue, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Fail silently to avoid disrupting the UI
+
+def auto_load_queue():
+    """Loads the label_queue from a local JSON file if it exists."""
+    try:
+        if os.path.exists(AUTOSAVE_PATH):
+            with open(AUTOSAVE_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+    except Exception:
+        pass
+    return []
 
 # --- Constants ---
 # Region Color Mapping
@@ -410,7 +436,7 @@ st.title("🏷️ Specimen Label Generator")
 if 'lat' not in st.session_state: st.session_state.lat = 0.0
 if 'lon' not in st.session_state: st.session_state.lon = 0.0
 if 'last_map_click' not in st.session_state: st.session_state.last_map_click = None
-if 'label_queue' not in st.session_state: st.session_state.label_queue = []
+if 'label_queue' not in st.session_state: st.session_state.label_queue = auto_load_queue()
 if 'last_fetched_coords' not in st.session_state: st.session_state.last_fetched_coords = (None, None)
 if 'address_input' not in st.session_state: st.session_state.address_input = ""
 if 'elevation_val' not in st.session_state: st.session_state.elevation_val = None
@@ -452,6 +478,7 @@ with st.sidebar:
             if item.get('type') == 'data_v2':
                 item['color'] = label_color
                 count += 1
+        auto_save_queue()
         st.success(f"Updated color for {count} items.")
         st.rerun()
 
@@ -486,6 +513,7 @@ with st.sidebar:
                  if isinstance(loaded_data, list):
                      if st.button("Confirm Load", type="primary"):
                          st.session_state.label_queue = loaded_data
+                         auto_save_queue()
                          st.success("Data Loaded!")
                          st.rerun()
                  else:
@@ -497,6 +525,7 @@ with st.sidebar:
         st.write(f"Items in queue: {len(st.session_state.label_queue)}")
         if st.button("Clear Queue", type="secondary"):
             st.session_state.label_queue = []
+            auto_save_queue()
             st.rerun()
     else:
         st.write("Queue is empty.")
@@ -641,6 +670,7 @@ with tab1:
                     'quantity': quantity,
                     'preview': f"{final_header} {final_locality}..."
                 })
+                auto_save_queue()
                 st.success(f"Added {quantity} Data Label(s) to Queue!")
 
 # --- TAB 2: IDENTIFICATION LABEL ---
@@ -698,6 +728,7 @@ with tab2:
             'quantity': quantity,
             'preview': f"[ID] {genus} {species}"
         })
+        auto_save_queue()
         st.success(f"Added {quantity} ID Label(s) to Queue!")
         st.text("Preview Format:")
         st.markdown(preview_str)
@@ -721,6 +752,7 @@ with tab3:
                 'quantity': quantity,
                 'preview': f"[DNA] {mol_id}"
             })
+            auto_save_queue()
             st.success(f"Added {quantity} Molecular Label(s) to Queue!")
 
 # --- TAB 4: SHEET PREVIEW (Full A4) ---
@@ -967,16 +999,19 @@ if st.session_state.label_queue:
             if st.button("➖", key=f"qty_minus_{selected_idx}", help="数量を減らす"):
                 if item['quantity'] > 1:
                     queue[selected_idx]['quantity'] -= 1
+                    auto_save_queue()
                     st.rerun()
 
         with act_col3:
             if st.button("➕", key=f"qty_plus_{selected_idx}", help="数量を増やす"):
                 queue[selected_idx]['quantity'] += 1
+                auto_save_queue()
                 st.rerun()
 
         with act_col5:
             if st.button("🗑️ 削除", key=f"del_{selected_idx}", type="secondary"):
                 queue.pop(selected_idx)
+                auto_save_queue()
                 st.rerun()
 
     st.divider()
