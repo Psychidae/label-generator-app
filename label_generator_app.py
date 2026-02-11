@@ -746,64 +746,231 @@ st.divider()
 st.subheader("📦 Current Batch Queue")
 
 if st.session_state.label_queue:
-    # Header
-    qs_col1, qs_col2, qs_col3, qs_col4 = st.columns([0.5, 3, 1, 1])
-    qs_col1.markdown("**#**")
-    qs_col2.markdown("**Content**")
-    qs_col3.markdown("**Qty**")
-    qs_col4.markdown("**Action**")
-    
-    # List Items with Delete Buttons
-    for idx, item in enumerate(st.session_state.label_queue):
-        c1, c2, c3, c4 = st.columns([0.5, 3, 1, 1])
-        c1.text(str(idx + 1))
-        
-        # Format preview text nicely
-        prev_text = item['preview'].replace("\n", " | ")
-        if len(prev_text) > 50: prev_text = prev_text[:50] + "..."
-        c2.text(prev_text)
-        
-        c3.text(str(item['quantity']))
-        
-        # Delete Button (Unique key required)
-        if c4.button("🗑️", key=f"del_{idx}"):
-            st.session_state.label_queue.pop(idx)
-            st.rerun()
-            
+    queue = st.session_state.label_queue
+    total_items = len(queue)
+    total_labels = sum(item['quantity'] for item in queue)
+
+    # --- Summary Bar ---
+    st.markdown(f"**{total_items}** アイテム / **{total_labels}** ラベル（合計）")
+
+    # --- Slider Navigation ---
+    if total_items == 1:
+        selected_idx = 0
+        st.markdown("**Item 1 / 1**")
+    else:
+        selected_idx = st.slider(
+            "アイテムを選択",
+            min_value=1,
+            max_value=total_items,
+            value=1,
+            format="Item %d",
+            key="queue_slider"
+        ) - 1
+
+    item = queue[selected_idx]
+    item_type = item.get('type', 'text')
+
+    # --- Card Display ---
+    with st.container():
+        # Type Badge
+        type_labels = {
+            'data_v2': '🌎 Data Label',
+            'rich': '🔍 Identification Label',
+            'text': '🧬 Molecular Label',
+        }
+        badge = type_labels.get(item_type, '📄 Label')
+
+        st.markdown(f"### {badge}　`#{selected_idx + 1}`")
+
+        if item_type == 'data_v2':
+            # --- Data Label Card ---
+            card_col1, card_col2 = st.columns([1.2, 1])
+
+            with card_col1:
+                # Parse body into structured fields
+                header = item.get('header', '')
+                body = item.get('body', '')
+                body_lines = body.split('\n')
+
+                # Extract fields from body text
+                locality_line = body_lines[0] if len(body_lines) > 0 else ''
+                coords_date_line = body_lines[1] if len(body_lines) > 1 else ''
+                collector_line = body_lines[2] if len(body_lines) > 2 else ''
+
+                # Parse locality and elevation
+                locality_part = locality_line.rstrip(',')
+                elev_match = re.search(r'\(alt\.\s*(.+?)\s*m?\)', locality_part)
+                if elev_match:
+                    elev_str = elev_match.group(1)
+                    loc_str = locality_part[:locality_part.index('(alt.')].strip().rstrip(',')
+                else:
+                    elev_str = '—'
+                    loc_str = locality_part
+
+                # Parse coords and date from line 2
+                coord_match = re.search(r'([\d.]+°[NS]),\s*([\d.]+°[EW])', coords_date_line)
+                date_match = re.search(r'(\d+\s+[IVXLCDM]+\s+\d{4})', coords_date_line)
+                coord_str = f"{coord_match.group(1)}, {coord_match.group(2)}" if coord_match else '—'
+                date_str = date_match.group(1) if date_match else '—'
+
+                # Parse collector and method from line 3
+                method_match = re.search(r',\s*\((.+?)\)\s*$', collector_line)
+                if method_match:
+                    method_str = method_match.group(1)
+                    collector_str = collector_line[:collector_line.rindex(',')].strip()
+                else:
+                    method_str = '—'
+                    collector_str = collector_line.strip()
+
+                color_hex = item.get('color', '#000000')
+
+                # Structured info display
+                st.markdown(f"""
+| | |
+|:---|:---|
+| **🏷️ ヘッダー** | {header} |
+| **📍 場所** | {loc_str} |
+| **⛰️ 標高** | {elev_str} m |
+| **🌐 座標** | {coord_str} |
+| **📅 日付** | {date_str} |
+| **👤 採集者** | {collector_str} |
+| **🪤 採集方法** | {method_str} |
+| **🎨 カラー** | `{color_hex}` |
+""")
+
+            with card_col2:
+                # HTML Preview
+                st.markdown("**ラベルプレビュー:**")
+                preview_html = f"""
+                <div style="
+                    border: 1px solid #555; padding: 8px; max-width: 280px;
+                    font-family: Arial; font-size: 11px; line-height: 1.2;
+                    background: white; color: black; border-radius: 4px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                ">
+                    <div style="font-weight: bold;">{header}</div>
+                    <div style="height: 4px; background-color: {color_hex}; margin: 3px 0; border-radius: 2px;"></div>
+                    <div style="white-space: pre-wrap;">{body}</div>
+                </div>
+                """
+                st.components.v1.html(preview_html, height=140)
+
+        elif item_type == 'rich':
+            # --- ID Label Card ---
+            content_parts = item.get('content', [])
+            family_str = ''
+            genus_str = ''
+            species_str = ''
+            author_str = ''
+            det_str = ''
+
+            for text, is_italic in content_parts:
+                text_clean = text.strip()
+                if not text_clean:
+                    continue
+                if text_clean.startswith('det.'):
+                    det_str = text_clean
+                elif is_italic and not genus_str:
+                    genus_str = text_clean
+                elif is_italic:
+                    species_str = text_clean
+                elif not family_str and not genus_str:
+                    family_str = text_clean
+                else:
+                    author_str = text_clean
+
+            st.markdown(f"""
+| | |
+|:---|:---|
+| **Family** | {family_str or '—'} |
+| **Genus** | *{genus_str}* |
+| **Species** | *{species_str or '—'}* |
+| **Author** | {author_str or '—'} |
+| **Det.** | {det_str or '—'} |
+""")
+
+            # Preview
+            preview_parts = []
+            for text, is_italic in content_parts:
+                if is_italic:
+                    preview_parts.append(f"*{text.strip()}*")
+                else:
+                    preview_parts.append(text.strip())
+            st.markdown("**プレビュー:** " + " ".join([p for p in preview_parts if p]))
+
+        else:
+            # --- Molecular / Text Label Card ---
+            content = item.get('content', '')
+            lines = str(content).split('\n')
+            sample_id = lines[0] if len(lines) > 0 else '—'
+            note = lines[1] if len(lines) > 1 else '—'
+
+            st.markdown(f"""
+| | |
+|:---|:---|
+| **🧪 Sample ID** | `{sample_id}` |
+| **📝 Note** | {note} |
+""")
+
+        # --- Action Buttons ---
+        st.markdown("---")
+        act_col1, act_col2, act_col3, act_col4, act_col5 = st.columns([1, 0.5, 0.5, 0.5, 1])
+
+        with act_col1:
+            st.markdown(f"**数量: {item['quantity']}**")
+
+        with act_col2:
+            if st.button("➖", key=f"qty_minus_{selected_idx}", help="数量を減らす"):
+                if item['quantity'] > 1:
+                    queue[selected_idx]['quantity'] -= 1
+                    st.rerun()
+
+        with act_col3:
+            if st.button("➕", key=f"qty_plus_{selected_idx}", help="数量を増やす"):
+                queue[selected_idx]['quantity'] += 1
+                st.rerun()
+
+        with act_col5:
+            if st.button("🗑️ 削除", key=f"del_{selected_idx}", type="secondary"):
+                queue.pop(selected_idx)
+                st.rerun()
+
     st.divider()
-    
-    # Download Batch
+
+    # --- Download Batch ---
     docx_file = create_docx(
-        st.session_state.label_queue, 
-        font_size=font_size, 
-        show_borders=show_borders, 
+        queue,
+        font_size=font_size,
+        show_borders=show_borders,
         num_columns=num_columns,
         font_name=font_name,
         char_spacing=char_spacing
     )
     st.download_button(
-        label=f"Download Batch DOCX ({len(st.session_state.label_queue)} types)",
+        label=f"📥 Download Batch DOCX ({total_items} types / {total_labels} labels)",
         data=docx_file,
         file_name=f"labels_batch_{datetime.date.today()}.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         type="primary"
     )
-    
-    # Detailed View (Data Table)
-    with st.expander("🔍 View All Queue Data (Table)", expanded=False):
-        # Convert dictionary list to DF for easy viewing
-        if st.session_state.label_queue:
-            # Flatten or simplify for display
-            display_data = []
-            for item in st.session_state.label_queue:
-                row = item.copy()
-                # Clean up complex fields for display if needed
-                if 'content' in row and isinstance(row['content'], list):
-                    row['content'] = '(Rich Text)'
-                display_data.append(row)
-            
-            df = pd.DataFrame(display_data)
-            st.dataframe(df, use_container_width=True)
-            
+
+    # --- Summary Table (Collapsible) ---
+    with st.expander("📋 全アイテム一覧", expanded=False):
+        summary_data = []
+        for i, item in enumerate(queue):
+            item_type = item.get('type', 'text')
+            type_name = {'data_v2': 'Data', 'rich': 'ID', 'text': 'Molecular'}.get(item_type, 'Other')
+            preview = item.get('preview', '').replace('\n', ' ')
+            if len(preview) > 60:
+                preview = preview[:60] + '...'
+            summary_data.append({
+                '#': i + 1,
+                'Type': type_name,
+                'Preview': preview,
+                'Qty': item['quantity'],
+            })
+        df = pd.DataFrame(summary_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
 else:
     st.info("Queue is empty. Add labels from the tabs above.")
