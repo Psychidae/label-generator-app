@@ -612,15 +612,18 @@ with tab1:
                 collection_date, collector_name, collection_method
             )
             
-            # Preview HTML for V2
+            # Preview HTML for V2 (matches DOCX print style)
+            _cs = f"letter-spacing: {char_spacing}pt;" if char_spacing != 0 else ""
             preview_html = f"""
             <div style="
-                border: 1px solid #000; padding: 5px; width: 250px; 
-                font-family: Arial; font-size: 11px; line-height: 1.2;
+                border: 1px dotted #CCCCCC; padding: 1px;
+                font-family: '{font_name}', Arial, sans-serif;
+                font-size: {font_size}pt; line-height: 1.0;
                 background: white; color: black;
+                display: inline-block; {_cs}
             ">
                 <div style="font-weight: bold;">{final_header}</div>
-                <div style="height: 4px; background-color: {label_color}; margin: 2px 0;"></div>
+                <div style="height: 2px; background-color: {label_color}; margin: 1px 0;"></div>
                 <div style="white-space: pre-wrap;">{body_text}</div>
             </div>
             """
@@ -839,18 +842,22 @@ if st.session_state.label_queue:
 """)
 
             with card_col2:
-                # HTML Preview
-                st.markdown("**ラベルプレビュー:**")
+                # HTML Preview (matches DOCX print style)
+                st.markdown("**ラベルプレビュー（実寸イメージ）:**")
+                _cs = f"letter-spacing: {char_spacing}pt;" if char_spacing != 0 else ""
                 preview_html = f"""
-                <div style="
-                    border: 1px solid #555; padding: 8px; max-width: 280px;
-                    font-family: Arial; font-size: 11px; line-height: 1.2;
-                    background: white; color: black; border-radius: 4px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-                ">
-                    <div style="font-weight: bold;">{header}</div>
-                    <div style="height: 4px; background-color: {color_hex}; margin: 3px 0; border-radius: 2px;"></div>
-                    <div style="white-space: pre-wrap;">{body}</div>
+                <div style="padding: 16px; background: #f8f8f8;">
+                    <div style="
+                        border: 1px dotted #CCCCCC; padding: 1px;
+                        font-family: '{font_name}', Arial, sans-serif;
+                        font-size: {font_size}pt; line-height: 1.0;
+                        background: white; color: black;
+                        display: inline-block; {_cs}
+                    ">
+                        <div style="font-weight: bold;">{header}</div>
+                        <div style="height: 2px; background-color: {color_hex}; margin: 1px 0;"></div>
+                        <div style="white-space: pre-wrap;">{body}</div>
+                    </div>
                 </div>
                 """
                 st.components.v1.html(preview_html, height=140)
@@ -879,7 +886,9 @@ if st.session_state.label_queue:
                 else:
                     author_str = text_clean
 
-            st.markdown(f"""
+            id_col1, id_col2 = st.columns([1.2, 1])
+            with id_col1:
+                st.markdown(f"""
 | | |
 |:---|:---|
 | **Family** | {family_str or '—'} |
@@ -889,28 +898,63 @@ if st.session_state.label_queue:
 | **Det.** | {det_str or '—'} |
 """)
 
-            # Preview
-            preview_parts = []
-            for text, is_italic in content_parts:
-                if is_italic:
-                    preview_parts.append(f"*{text.strip()}*")
-                else:
-                    preview_parts.append(text.strip())
-            st.markdown("**プレビュー:** " + " ".join([p for p in preview_parts if p]))
+            with id_col2:
+                # HTML Preview (matches DOCX print style)
+                st.markdown("**ラベルプレビュー（実寸イメージ）:**")
+                _cs = f"letter-spacing: {char_spacing}pt;" if char_spacing != 0 else ""
+                rich_html_parts = []
+                for text, is_italic in content_parts:
+                    style = "font-style: italic;" if is_italic else ""
+                    escaped = text.replace('\n', '<br>')
+                    rich_html_parts.append(f'<span style="{style}">{escaped}</span>')
+                rich_html = ''.join(rich_html_parts)
+                preview_html = f"""
+                <div style="padding: 16px; background: #f8f8f8;">
+                    <div style="
+                        border: 1px dotted #CCCCCC; padding: 1px;
+                        font-family: '{font_name}', Arial, sans-serif;
+                        font-size: {font_size}pt; line-height: 1.0;
+                        background: white; color: black;
+                        display: inline-block; {_cs}
+                    ">{rich_html}</div>
+                </div>
+                """
+                st.components.v1.html(preview_html, height=100)
 
         else:
             # --- Molecular / Text Label Card ---
             content = item.get('content', '')
-            lines = str(content).split('\n')
+            content_str = str(content)
+            lines = content_str.split('\n')
             sample_id = lines[0] if len(lines) > 0 else '—'
             note = lines[1] if len(lines) > 1 else '—'
 
-            st.markdown(f"""
+            mol_col1, mol_col2 = st.columns([1.2, 1])
+            with mol_col1:
+                st.markdown(f"""
 | | |
 |:---|:---|
 | **🧪 Sample ID** | `{sample_id}` |
 | **📝 Note** | {note} |
 """)
+
+            with mol_col2:
+                # HTML Preview (matches DOCX print style)
+                st.markdown("**ラベルプレビュー（実寸イメージ）:**")
+                _cs = f"letter-spacing: {char_spacing}pt;" if char_spacing != 0 else ""
+                preview_html = f"""
+                <div style="padding: 16px; background: #f8f8f8;">
+                    <div style="
+                        border: 1px dotted #CCCCCC; padding: 1px;
+                        font-family: '{font_name}', Arial, sans-serif;
+                        font-size: {font_size}pt; line-height: 1.0;
+                        background: white; color: black;
+                        display: inline-block; {_cs}
+                        white-space: pre-wrap;
+                    ">{content_str}</div>
+                </div>
+                """
+                st.components.v1.html(preview_html, height=80)
 
         # --- Action Buttons ---
         st.markdown("---")
